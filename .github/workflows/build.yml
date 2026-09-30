@@ -1,0 +1,23 @@
+name: Build NXR NUKER
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Compile NXR NUKER
+        run: |
+          g++ nxr_nuker.cpp -o NXR_NUKER.exe -static -lwininet -lws2_32 -O2 -s -std=c++17
+
+      - name: Upload EXE Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NXR-NUKER
+          path: NXR_NUKER.exe
